@@ -57,5 +57,7 @@ class MeanRevParams:
     max_bars: int = 18        # time stop: 3 days
 
 
-# Chosen strategy (Omar, 2026-11-22): trend only, slowest variant from RESULTS_SLOW.md.
-CHOSEN = TrendParams(breakout=180, atr=42, init_stop_atr=5.0, trail_atr=7.0)
+# Chosen strategy (Omar, 2026-11-22): "A 60-day" from RESULTS_RETHINK.md (passed at real fees).
+# Previous choice (180-bar, failed at real fees): TrendParams(breakout=180, atr=42, init_stop_atr=5.0, trail_atr=7.0)
+CHOSEN = TrendParams(regime_ema=1200, breakout=360, atr=42, init_stop_atr=6.0, trail_atr=9.0)
+CHOSEN_ENTRY = EntryParams(mode="limit", offset_atr=0.0, valid_bars=1, fallback_market=True)

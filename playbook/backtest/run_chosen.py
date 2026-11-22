@@ -8,7 +8,10 @@ import json
 from dataclasses import replace
 from pathlib import Path
 
-from config import ADDED, CHOSEN, ORIGINAL, Costs, Risk
+from config import ADDED, ORIGINAL, Costs, Risk, TrendParams
+
+# The 180-bar strategy this report was written for (superseded by config.CHOSEN on 2026-11-22).
+CHOSEN = TrendParams(breakout=180, atr=42, init_stop_atr=5.0, trail_atr=7.0)
 from engine import run, stats
 from run import HDR, MIN_PF, MIN_TRADES, SPLIT, fmt, load, md_table
 

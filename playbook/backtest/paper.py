@@ -16,19 +16,19 @@ from pathlib import Path
 
 import pandas as pd
 
-from config import CHOSEN, UNIVERSE, Costs, MeanRevParams, Risk
+from config import CHOSEN, CHOSEN_ENTRY, UNIVERSE, Costs, MeanRevParams, Risk
 from engine import Book, add_indicators, bar_rows
 from fetch import fetch_hourly, to_4h
 
 MODE = "PAPER"  # Live trading is NOT implemented. Golden rule: no "go live" from Omar, no live mode.
 DIR = Path(__file__).parent.parent / "paper"
 STATE = DIR / "state.json"
-HISTORY_DAYS = 220  # enough for the 200-bar EMA, 180-bar breakout and ATR(42) to settle
+HISTORY_DAYS = 500  # 200-day EMA (1200 bars) needs ~2.5x its length to settle; 60-day breakout
 STRATS = ("trend",)
 
 
 def make_book():
-    return Book(UNIVERSE, Costs(), Risk(), CHOSEN, MeanRevParams(), STRATS)
+    return Book(UNIVERSE, Costs(), Risk(), CHOSEN, MeanRevParams(), STRATS, CHOSEN_ENTRY)
 
 
 def last_complete_boundary(now):
@@ -69,7 +69,9 @@ def status(book, meta):
         lines.append(f"  OPEN {c}: qty {p.qty:.8g} @ {p.entry:.6g}, resting stop {p.stop:.6g}, risk ${p.risk_usd:.2f}, "
                      f"since {p.entry_time}")
     for c, strat, stop in book.pending_entries:
-        lines.append(f"  NEXT OPEN: buy {c} ({strat}), stop {stop:.6g}")
+        lines.append(f"  NEXT OPEN: market buy {c} ({strat}), stop {stop:.6g}")
+    for c, strat, stop, limit, left in book.working:
+        lines.append(f"  RESTING LIMIT BUY {c} @ {limit:.6g} ({left} bar(s) left), stop {stop:.6g}")
     return "\n".join(lines)
 
 

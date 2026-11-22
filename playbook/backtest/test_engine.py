@@ -68,7 +68,8 @@ def test_kill_switch_blocks_new_entries():
 def test_book_state_roundtrip_matches_backtest():
     """Paper bot path (step + JSON save/load every bar) must equal the backtest path."""
     import json
-    from config import CHOSEN, MeanRevParams
+    from config import MeanRevParams, TrendParams
+    CHOSEN = TrendParams(breakout=180, atr=42, init_stop_atr=5.0, trail_atr=7.0)
     from engine import Book, add_indicators, bar_rows, to_result
 
     rng = np.random.default_rng(0)
