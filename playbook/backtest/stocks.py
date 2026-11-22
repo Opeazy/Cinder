@@ -42,8 +42,18 @@ def fetch():
     SDIR.mkdir(parents=True, exist_ok=True)
     for t in ETFS:
         url = f"https://stooq.com/q/d/l/?s={t.lower()}.us&i=d"
-        req = urllib.request.Request(url, headers={"User-Agent": "backtest-client"})
-        raw = urllib.request.urlopen(req, timeout=60).read().decode()
+        raw = None
+        for i in range(8):  # the connection to stooq is flaky through the proxy
+            try:
+                req = urllib.request.Request(url, headers={"User-Agent": "backtest-client"})
+                raw = urllib.request.urlopen(req, timeout=60).read().decode()
+                if raw.lower().startswith("date"):
+                    break
+            except Exception as e:
+                print(f"  {t}: retry {i + 1} ({e})", flush=True)
+            time.sleep(3 * (i + 1))
+        if not raw or not raw.lower().startswith("date"):
+            raise SystemExit(f"could not download {t}: {raw[:200] if raw else 'no response'}")
         df = pd.read_csv(io.StringIO(raw))
         df.columns = [c.lower() for c in df.columns]
         df["time"] = pd.to_datetime(df["date"]).dt.tz_localize("UTC")
