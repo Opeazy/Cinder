@@ -33,3 +33,7 @@ Trend following and mean reversion on top Coinbase spot coins, 4-hour candles.
   (`backtest/RESULTS.md`). **Both strategies FAIL golden rule 2. No bot.**
   Trend has a small edge before fees (PF 1.14 at 0% fees) that 0.50%/side fees wipe out.
   Mean reversion loses even with zero fees.
+- 2026-11-22: Slower trend-only, 4h bars, 3 variants fixed in advance (`backtest/RESULTS_SLOW.md`).
+  Only the 180-bar breakout passes golden rule 2 (PF 1.31 at 0.50% fees, +41% over 2022 to 2026 with limits off).
+  **But its drawdown (~-28%) is deeper than the -15% kill switch**, which stops it even at 0.5% risk.
+  Decision needed from Omar before paper trading.
