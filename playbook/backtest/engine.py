@@ -117,7 +117,7 @@ def run(data: dict, costs=Costs(), risk=Risk(), tp=TrendParams(), mp=MeanRevPara
         can_enter = killed_at is None and not day_blocked
         for c, strat, stop in pending_entries:
             o = arr[c]["open"][i]
-            if not can_enter or c in pos or np.isnan(o):
+            if not can_enter or c in pos or np.isnan(o) or (risk.max_positions and len(pos) >= risk.max_positions):
                 continue
             fill = o * (1 + slip)
             if fill <= stop:

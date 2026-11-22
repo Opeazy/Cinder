@@ -23,6 +23,7 @@ class Risk:
     capital: float = 100.0
     risk_per_trade: float = 0.005  # 0.5% of equity, fees included (Omar, 2026-11-22; was 1%)
     daily_loss_limit: float = 0.03  # vs equity at UTC day start -> no new entries until next UTC day
+    max_positions: int = 0          # 0 = no cap on simultaneous open positions
     kill_switch: float = 0.25       # drawdown from equity high -> stop all, keep stops (Omar, 2026-11-22; was 15%)
 
 

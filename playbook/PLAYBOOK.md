@@ -40,3 +40,7 @@ dropped 2026-11-22: no edge in backtest).
   Decision needed from Omar before paper trading.
 - 2026-11-22: **Omar chose option 1**: trend only (180-bar breakout), 0.5% risk, -25% kill switch.
   Universe widened from 8 to 20 coins.
+- 2026-11-22: 20-coin test (`backtest/RESULTS_CHOSEN.md`). The 12 new coins, unseen when rules were picked,
+  are also profitable (PF 1.13), so the edge holds out of sample, but weaker than on the original 8.
+  With 20 coins the -25% kill switch is hit (correlated positions). A cap of 8 open positions
+  (max 4% open risk) keeps max drawdown at about -19%. **Decision needed from Omar.**

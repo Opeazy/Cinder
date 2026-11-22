@@ -96,7 +96,7 @@ def main():
     w(f"- **{'PASS' if ok else 'FAIL'}** — " + ", ".join(f"{k} {'✓' if v else '✗'}" for k, v in checks.items()))
     w("")
     (OUT / "RESULTS_CHOSEN.md").write_text("\n".join(L))
-    json.dump({"pass": ok, **checks}, open(OUT / "verdict_chosen.json", "w"), indent=1)
+    json.dump({"pass": bool(ok), **{k: bool(v) for k, v in checks.items()}}, open(OUT / "verdict_chosen.json", "w"), indent=1)
     print("\n".join(L))
 
 
