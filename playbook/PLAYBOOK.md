@@ -72,3 +72,5 @@ dropped 2026-11-22: no edge in backtest).
   commission-free (Coinbase stocks), 0.05% slippage. **PASSES** rule 2: 783 trades, PF 1.46, +101%,
   max DD -19.6%, both halves positive (PF 1.50 / 1.44). But at 0.25%/side costs it nearly breaks even,
   and buy-and-hold SPY made +752% (max drop -55%). Not yet verified: Coinbase stock stop orders and API.
+- 2026-11-22: Omar checked: **no stop orders for stocks/ETFs on Coinbase.** Golden rule 1 (no stop on the
+  exchange, no trade) rules out ETFs on Coinbase. ETF results kept for reference; crypto strategy A continues.
