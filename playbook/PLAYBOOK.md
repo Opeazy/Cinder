@@ -15,7 +15,7 @@ Trend following and mean reversion on top Coinbase spot coins, 4-hour candles.
 | Mode | PAPER until Omar says "go live" |
 | Time zone | US Mountain, awake from 8:00 am |
 | Exchange | Coinbase (spot, no shorting) |
-| Fees | Coinbase fee tier, TBD (default 0.10% per side) |
+| Fees | 0.50% per side (Omar's Coinbase tier) |
 
 ## Golden rules
 - No stop on the exchange, no trade.
@@ -24,8 +24,6 @@ Trend following and mean reversion on top Coinbase spot coins, 4-hour candles.
 - No "go live" from Omar, no live mode.
 
 ## Open items
-- [ ] Confirm actual Coinbase fee tier. The 0.10%/side default is likely far below
-      Coinbase Advanced's entry tier for a small account; backtests must use the real number.
-- [ ] Define the coin universe ("top" = by what, how many, how often refreshed).
-- [ ] Define trend-following and mean-reversion entry/exit rules and stop placement.
+- [x] Fee tier: 0.50% per side.
+- [ ] Approve or change the draft universe and entry/exit rules in `backtest/README.md`.
 - [ ] Define what counts as a "matching" paper trade (vs. backtest expectation).
