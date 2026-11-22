@@ -16,6 +16,7 @@ class Costs:
     fee: float = 0.005        # 0.50% per side (Omar's Coinbase tier)
     slippage: float = 0.0005  # 0.05% per side, assumed for market/stop fills
     min_notional: float = 1.0  # Coinbase min_market_funds for USD pairs
+    maker_fee: float = 0.005   # fee for resting limit orders that fill as maker. TBD: Omar to confirm his maker rate
 
 
 @dataclass
@@ -25,6 +26,15 @@ class Risk:
     daily_loss_limit: float = 0.03  # vs equity at UTC day start -> no new entries until next UTC day
     max_positions: int = 8          # max simultaneous open trades (4% open risk). Omar, 2026-11-22. 0 = no cap
     kill_switch: float = 0.25       # drawdown from equity high -> stop all, keep stops (Omar, 2026-11-22; was 15%)
+
+
+@dataclass
+class EntryParams:
+    """How entries are sent. Exits (stops) are always taker."""
+    mode: str = "market"         # "market": buy at next open (taker). "limit": resting post-only limit buy
+    offset_atr: float = 0.0      # limit price = signal close - offset_atr x ATR
+    valid_bars: int = 1          # cancel the limit order after this many bars unfilled
+    fallback_market: bool = False  # after cancel, buy at the next open as taker instead of skipping
 
 
 @dataclass

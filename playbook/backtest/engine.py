@@ -25,7 +25,7 @@ from dataclasses import asdict, dataclass, field
 import numpy as np
 import pandas as pd
 
-from config import Costs, MeanRevParams, Risk, TrendParams
+from config import Costs, EntryParams, MeanRevParams, Risk, TrendParams
 from indicators import atr, ema, rsi, sma
 
 FIELDS = ["open", "high", "low", "close", "ema_tf", "ema_mr", "dc_high", "atr_tf", "atr_mr", "rsi", "sma_exit"]
@@ -52,6 +52,7 @@ class Result:
     kill_time: pd.Timestamp | None
     blocked_days: int
     skipped: dict = field(default_factory=dict)
+    orders: dict = field(default_factory=dict)
 
 
 def add_indicators(df, tp: TrendParams, mp: MeanRevParams):
@@ -70,8 +71,11 @@ class Book:
     """All trading state. `step(t, bars)` processes one completed 4h bar for every coin."""
 
     def __init__(self, coins, costs=Costs(), risk=Risk(), tp=TrendParams(), mp=MeanRevParams(),
-                 strategies=("trend", "meanrev")):
+                 strategies=("trend", "meanrev"), entry=EntryParams()):
         self.coins, self.costs, self.risk, self.tp, self.mp = list(coins), costs, risk, tp, mp
+        self.entry = entry
+        self.working = []  # resting limit buys: [coin, strategy, stop, limit, bars_left]
+        self.orders = {"limit_placed": 0, "limit_filled": 0, "limit_expired": 0, "fallback_market": 0}
         self.strategies = tuple(strategies)
         self.cash = risk.capital
         self.pos: dict[str, Position] = {}
@@ -89,7 +93,7 @@ class Book:
 
     # ---- state (de)serialisation for the paper bot ----
     def to_dict(self):
-        d = {k: v for k, v in self.__dict__.items() if k not in ("costs", "risk", "tp", "mp", "pos")}
+        d = {k: v for k, v in self.__dict__.items() if k not in ("costs", "risk", "tp", "mp", "pos", "entry")}
         d["pos"] = {c: asdict(p) for c, p in self.pos.items()}
         return d
 
@@ -127,6 +131,29 @@ class Book:
                                 bars=p.bars, reason=reason))
         self._log(t, f"SELL {c} qty={p.qty:.8g} @ {fill:.6g} ({reason}) pnl=${pnl:+.4f} R={pnl / p.risk_usd:+.2f}")
 
+    def _buy(self, t, bars, c, strat, stop, fill, entry_fee_rate, kind):
+        slip, fee = self.costs.slippage, self.costs.fee
+        if fill <= stop:
+            self.skipped["gap_below_stop"] += 1
+            return False
+        equity = self._mtm(bars, "open")
+        risk_usd = self.risk.risk_per_trade * equity
+        loss_per_unit = (fill - stop * (1 - slip)) + entry_fee_rate * fill + fee * stop * (1 - slip)
+        qty = risk_usd / loss_per_unit
+        if qty * fill * (1 + entry_fee_rate) > self.cash:  # 1x / spot
+            qty = self.cash / (fill * (1 + entry_fee_rate))
+            if qty * fill < self.costs.min_notional:
+                self.skipped["no_cash"] += 1
+                return False
+        if qty * fill < self.costs.min_notional:
+            self.skipped["below_min_notional"] += 1
+            return False
+        entry_fee = qty * fill * entry_fee_rate
+        self.cash -= qty * fill + entry_fee
+        self.pos[c] = Position(c, strat, qty, fill, stop, entry_fee, qty * loss_per_unit, t, high=bars[c]["high"])
+        self._log(t, f"BUY {c} qty={qty:.8g} @ {fill:.6g} ({strat}, {kind}); STOP-SELL placed @ {stop:.6g}")
+        return True
+
     # ---- one bar ----
     def step(self, t, bars):
         """t: bar open time (ISO string). bars: {coin: {field: value}} for coins with a bar at t."""
@@ -150,28 +177,31 @@ class Book:
             if risk.max_positions and len(self.pos) >= risk.max_positions:
                 self.skipped["max_positions"] += 1
                 continue
-            fill = bars[c]["open"] * (1 + slip)
-            if fill <= stop:
-                self.skipped["gap_below_stop"] += 1
-                continue
-            equity = self._mtm(bars, "open")
-            risk_usd = risk.risk_per_trade * equity
-            loss_per_unit = (fill - stop * (1 - slip)) + fee * fill + fee * stop * (1 - slip)
-            qty = risk_usd / loss_per_unit
-            if qty * fill * (1 + fee) > self.cash:  # 1x / spot
-                qty = self.cash / (fill * (1 + fee))
-                if qty * fill < self.costs.min_notional:
-                    self.skipped["no_cash"] += 1
-                    continue
-            if qty * fill < self.costs.min_notional:
-                self.skipped["below_min_notional"] += 1
-                continue
-            entry_fee = qty * fill * fee
-            self.cash -= qty * fill + entry_fee
-            self.pos[c] = Position(c, strat, qty, fill, stop, entry_fee, qty * loss_per_unit, t,
-                                   high=bars[c]["high"])
-            self._log(t, f"BUY {c} qty={qty:.8g} @ {fill:.6g} ({strat}); STOP-SELL placed @ {stop:.6g}")
+            self._buy(t, bars, c, strat, stop, bars[c]["open"] * (1 + slip), fee, "market")
         self.pending_entries = []
+
+        # resting limit buys: fill as maker at the limit if the bar trades below it
+        still = []
+        for c, strat, stop, limit, left in self.working:
+            if not can_enter or c in self.pos:
+                continue  # cancelled
+            if c in bars and bars[c]["low"] < limit:
+                if risk.max_positions and len(self.pos) >= risk.max_positions:
+                    self.skipped["max_positions"] += 1
+                    continue
+                if self._buy(t, bars, c, strat, stop, limit, self.costs.maker_fee, "limit"):
+                    self.orders["limit_filled"] += 1
+                continue
+            left -= 1
+            if left > 0:
+                still.append([c, strat, stop, limit, left])
+                continue
+            self.orders["limit_expired"] += 1
+            self._log(t, f"CANCEL limit buy {c} @ {limit:.6g} (not filled)")
+            if self.entry.fallback_market:
+                self.orders["fallback_market"] += 1
+                self.pending_entries.append([c, strat, stop])
+        self.working = still
 
         # intrabar: resting stops
         for c in list(self.pos):
@@ -221,17 +251,29 @@ class Book:
         # signals for the next open
         if self.day_blocked:
             return
+        resting = {o[0] for o in self.working} | {o[0] for o in self.pending_entries}
         for c in self.coins:
-            if c in self.pos or c not in bars:
+            if c in self.pos or c not in bars or c in resting:
                 continue
             b = bars[c]
             cl = b["close"]
+            sig = None
             if "trend" in self.strategies and cl > b["ema_tf"] and cl > b["dc_high"]:
-                self.pending_entries.append([c, "trend", cl - tp.init_stop_atr * b["atr_tf"]])
+                sig = ("trend", cl - tp.init_stop_atr * b["atr_tf"], b["atr_tf"])
             elif "meanrev" in self.strategies and cl > b["ema_mr"] and b["rsi"] < mp.rsi_entry:
-                self.pending_entries.append([c, "meanrev", cl - mp.stop_atr * b["atr_mr"]])
-        for c, strat, stop in self.pending_entries:
-            self._log(t, f"SIGNAL {c} {strat}: buy at next open, stop {stop:.6g}")
+                sig = ("meanrev", cl - mp.stop_atr * b["atr_mr"], b["atr_mr"])
+            if sig is None:
+                continue
+            strat, stop, a = sig
+            if self.entry.mode == "limit":
+                limit = cl - self.entry.offset_atr * a
+                self.working.append([c, strat, stop, limit, self.entry.valid_bars])
+                self.orders["limit_placed"] += 1
+                self._log(t, f"SIGNAL {c} {strat}: LIMIT BUY placed @ {limit:.6g} for {self.entry.valid_bars} bar(s), "
+                             f"stop {stop:.6g}")
+            else:
+                self.pending_entries.append([c, strat, stop])
+                self._log(t, f"SIGNAL {c} {strat}: buy at next open, stop {stop:.6g}")
 
 
 def bar_rows(data, start=None, end=None):
@@ -250,9 +292,9 @@ def bar_rows(data, start=None, end=None):
 
 
 def run(data: dict, costs=Costs(), risk=Risk(), tp=TrendParams(), mp=MeanRevParams(),
-        strategies=("trend", "meanrev"), start=None, end=None):
+        strategies=("trend", "meanrev"), start=None, end=None, entry=EntryParams()):
     data = {c: add_indicators(d, tp, mp) for c, d in data.items()}
-    book = Book(data, costs, risk, tp, mp, strategies)
+    book = Book(data, costs, risk, tp, mp, strategies, entry)
     for t, bars in bar_rows(data, start, end):
         book.step(t, bars)
     for c in list(book.pos):  # mark anything still open at the last close
@@ -267,7 +309,7 @@ def to_result(book):
         tr["exit_time"] = pd.to_datetime(tr.exit_time)
     eq = pd.Series({pd.Timestamp(t): v for t, v in book.equity})
     kill = pd.Timestamp(book.killed_at) if book.killed_at else None
-    return Result(tr, eq, kill, book.blocked_days, dict(book.skipped))
+    return Result(tr, eq, kill, book.blocked_days, dict(book.skipped), dict(book.orders))
 
 
 def stats(res: Result, capital=100.0):

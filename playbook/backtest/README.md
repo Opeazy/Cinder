@@ -9,6 +9,7 @@ python -m pytest -q        # engine sanity tests on synthetic bars
 python run.py              # original draft rules -> RESULTS.md
 python run_slow.py         # slower trend variants -> RESULTS_SLOW.md
 python run_chosen.py       # CHOSEN strategy, 20 coins, Omar's limits -> RESULTS_CHOSEN.md
+python run_limit.py        # limit vs market entries -> RESULTS_LIMIT.md
 python paper.py            # paper bot: process new 4h bars -> ../paper/
 python paper.py --status   # paper book
 python paper.py --compare  # paper trades vs backtest over the same period (golden rule 3)

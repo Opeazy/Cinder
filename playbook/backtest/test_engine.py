@@ -91,3 +91,33 @@ def test_book_state_roundtrip_matches_backtest():
     assert len(ref.trades) > 5
     assert book.trades == ref.trades
     assert book.cash == pytest.approx(ref.cash)
+
+
+def _breakout_then(next_bar_low_factor, maker=0.0025, fallback=False):
+    from config import EntryParams
+    closes = uptrend_then_breakout() + [120, 121, 122]
+    df = bars(closes)
+    sig_close = df["close"].iloc[-4]
+    lows = df["low"].to_numpy().copy()
+    lows[-3] = sig_close * next_bar_low_factor  # bar after the signal
+    lows[-2:] = df["close"].iloc[-3] * 1.5       # later bars never come back down
+    df["low"] = lows
+    entry = EntryParams(mode="limit", valid_bars=1, fallback_market=fallback)
+    return run({"X": df}, strategies=("trend",), entry=entry, costs=Costs(maker_fee=maker)), sig_close
+
+
+def test_limit_fills_as_maker_when_price_trades_below():
+    res, sig_close = _breakout_then(0.99)
+    t = res.trades.iloc[0]
+    assert t.entry == pytest.approx(sig_close)  # filled at the limit, no slippage
+    assert res.orders["limit_filled"] == 1
+    assert t.fees == pytest.approx(t.qty * t.entry * 0.0025 + t.qty * t.exit * Costs().fee)
+
+
+def test_limit_not_filled_is_skipped_or_falls_back():
+    res, _ = _breakout_then(1.01)
+    # every later bar is also a breakout, so a new limit is placed each bar and none fill
+    assert res.trades.empty and res.orders["limit_filled"] == 0 and res.orders["limit_expired"] >= 1
+    res, _ = _breakout_then(1.01, fallback=True)
+    assert len(res.trades) == 1 and res.orders["fallback_market"] >= 1
+    assert res.trades.iloc[0].entry > 120  # fallback bought at a later open, as taker

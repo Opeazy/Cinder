@@ -30,7 +30,8 @@ dropped 2026-11-22: no edge in backtest).
 - [x] Rules: trend only, 180-bar breakout (`backtest/config.py` CHOSEN), 20 coins.
 - [x] "Matching" paper trade: same coin, entry bar and exit bar as the backtest over the
       same period, entry and exit prices within 0.5% (`paper.py --compare`).
-- [ ] Schedule the paper bot to run every 4h.
+- [ ] Schedule the paper bot to run every 4h (Claude scheduled task blocked by permissions; Omar to allow or create it).
+- [ ] Confirm Coinbase MAKER fee rate (decides whether limit entries are worth it).
 
 ## Status
 - 2026-11-22: Draft rules backtested on 8 coins, 2022 to 2026, full costs
@@ -51,3 +52,6 @@ dropped 2026-11-22: no edge in backtest).
   356 trades, PF 1.25, +23.6% (2022 to 2026), max DD -19%, kill switch never hit.
 - 2026-11-22: Paper bot (`backtest/paper.py`) started at the 16:00 UTC bar. State in `paper/`.
   It uses the same trading code as the backtest and never sends orders.
+- 2026-11-22: Limit-order entry test (`backtest/RESULTS_LIMIT.md`). Saves fees only on entries.
+  At 0.25% maker: +29% vs +23.6% with market buys; at 0.40%: +25%; at 0.50%: no gain.
+  Paper bot still uses market entries until Omar decides.
