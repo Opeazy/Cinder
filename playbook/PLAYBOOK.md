@@ -11,6 +11,7 @@ dropped 2026-11-22: no edge in backtest).
 |---|---|
 | Capital | $100 (paper first) |
 | Risk per trade | 0.5% (~$0.50), changed from 1% on 2026-11-22 |
+| Max open trades | 8 (max 4% open risk), added 2026-11-22 |
 | Daily loss limit | 3% (~$3), no new entries until next UTC day |
 | Kill switch | -25% from account high (~$25): stop all, keep stops. Changed from -15% on 2026-11-22 |
 | Mode | PAPER until Omar says "go live" |
@@ -27,7 +28,9 @@ dropped 2026-11-22: no edge in backtest).
 ## Open items
 - [x] Fee tier: 0.50% per side.
 - [x] Rules: trend only, 180-bar breakout (`backtest/config.py` CHOSEN), 20 coins.
-- [ ] Define what counts as a "matching" paper trade (vs. backtest expectation).
+- [x] "Matching" paper trade: same coin, entry bar and exit bar as the backtest over the
+      same period, entry and exit prices within 0.5% (`paper.py --compare`).
+- [ ] Schedule the paper bot to run every 4h.
 
 ## Status
 - 2026-11-22: Draft rules backtested on 8 coins, 2022 to 2026, full costs
@@ -44,3 +47,7 @@ dropped 2026-11-22: no edge in backtest).
   are also profitable (PF 1.13), so the edge holds out of sample, but weaker than on the original 8.
   With 20 coins the -25% kill switch is hit (correlated positions). A cap of 8 open positions
   (max 4% open risk) keeps max drawdown at about -19%. **Decision needed from Omar.**
+- 2026-11-22: **Omar chose max 8 open trades.** 20-coin backtest PASSES golden rule 2:
+  356 trades, PF 1.25, +23.6% (2022 to 2026), max DD -19%, kill switch never hit.
+- 2026-11-22: Paper bot (`backtest/paper.py`) started at the 16:00 UTC bar. State in `paper/`.
+  It uses the same trading code as the backtest and never sends orders.

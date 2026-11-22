@@ -20,7 +20,7 @@ def main():
     data = load()
     sub = lambda coins: {c: data[c] for c in coins if c in data}
     on = Risk()
-    off = replace(on, kill_switch=1.0, daily_loss_limit=1.0)
+    off = replace(on, kill_switch=1.0, daily_loss_limit=1.0)  # cap on open trades stays on
     L = []
     w = L.append
     c0 = Costs()
@@ -28,7 +28,7 @@ def main():
     w(f"Rules: close > 200-bar EMA and close > prior 180-bar high; stop {CHOSEN.init_stop_atr:g} x ATR({CHOSEN.atr}) "
       f"below the signal close, trailing at highest high - {CHOSEN.trail_atr:g} x ATR; exit only via the resting stop.\n")
     w(f"Limits: risk {on.risk_per_trade:.1%}/trade incl. costs, daily loss limit {on.daily_loss_limit:.0%}, "
-      f"kill switch -{on.kill_switch:.0%} from high, 1x, long only. Costs: fee {c0.fee:.2%}/side, "
+      f"kill switch -{on.kill_switch:.0%} from high, max {on.max_positions} open trades, 1x, long only. Costs: fee {c0.fee:.2%}/side, "
       f"slippage {c0.slippage:.2%}/side, min order ${c0.min_notional:.0f}. Data 2022-01-01 to now.\n")
     w(f"Original 8 coins: {', '.join(ORIGINAL)}. Added 12 (unseen when the rules were picked): {', '.join(ADDED)}.\n")
 

@@ -63,3 +63,31 @@ def test_kill_switch_blocks_new_entries():
     res = run({"X": df}, strategies=("trend",), risk=Risk(risk_per_trade=0.5))  # big loss -> kill
     assert res.kill_time is not None
     assert len(res.trades) == 1
+
+
+def test_book_state_roundtrip_matches_backtest():
+    """Paper bot path (step + JSON save/load every bar) must equal the backtest path."""
+    import json
+    from config import CHOSEN, MeanRevParams
+    from engine import Book, add_indicators, bar_rows, to_result
+
+    rng = np.random.default_rng(0)
+    data = {}
+    for c in ("A", "B", "C"):
+        closes = 100 * np.exp(np.cumsum(rng.normal(0.002, 0.03, 1500)))
+        data[c] = add_indicators(bars(closes), CHOSEN, MeanRevParams())
+    rows = list(bar_rows(data))
+
+    ref = Book(data, tp=CHOSEN, strategies=("trend",))
+    for t, b in rows:
+        ref.step(t, b)
+
+    book = Book(data, tp=CHOSEN, strategies=("trend",))
+    for t, b in rows:
+        state = json.loads(json.dumps(book.to_dict()))
+        book = Book(data, tp=CHOSEN, strategies=("trend",)).load_dict(state)
+        book.step(t, b)
+
+    assert len(ref.trades) > 5
+    assert book.trades == ref.trades
+    assert book.cash == pytest.approx(ref.cash)

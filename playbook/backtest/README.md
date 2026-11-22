@@ -6,8 +6,16 @@ Implements golden rule 2: "No backtest with full costs, no bot."
 ```
 python fetch.py            # download 1h candles from Coinbase (public API), build 4h bars -> data/
 python -m pytest -q        # engine sanity tests on synthetic bars
-python run.py              # writes RESULTS.md, trades.csv, equity.csv
+python run.py              # original draft rules -> RESULTS.md
+python run_slow.py         # slower trend variants -> RESULTS_SLOW.md
+python run_chosen.py       # CHOSEN strategy, 20 coins, Omar's limits -> RESULTS_CHOSEN.md
+python paper.py            # paper bot: process new 4h bars -> ../paper/
+python paper.py --status   # paper book
+python paper.py --compare  # paper trades vs backtest over the same period (golden rule 3)
 ```
+
+**Current strategy:** see `CHOSEN` and `Risk` in `config.py` and `RESULTS_CHOSEN.md`.
+The draft rules below are kept for the record.
 
 Requires Python 3.10+, pandas, numpy (pytest for tests). All parameters live in `config.py`.
 

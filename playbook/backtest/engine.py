@@ -1,28 +1,34 @@
-"""Portfolio backtest for the playbook: 4h bars, long-only spot, 1x, full costs.
+"""Trading core for the playbook: 4h bars, long-only spot, 1x, full costs.
+
+The SAME `Book.step()` is used by the backtest (`run()`) and by the paper bot
+(`paper.py`), so paper trades can be compared one-for-one with the backtest.
 
 Timing (no look-ahead):
   * Signals are computed on a bar's CLOSE and filled at the NEXT bar's OPEN.
-  * The stop is set from the signal bar (close - k*ATR) and is assumed to rest
-    on the exchange from the moment of entry ("no stop on the exchange, no trade").
+  * The stop is set from the signal bar (close - k*ATR) and rests on the exchange
+    from the moment of entry ("no stop on the exchange, no trade").
   * Stops fill at the stop price, or at the open if the bar gaps through it,
     both minus slippage, and pay the taker fee.
   * Trailing stops only ratchet up, and are updated at bar close for the next bar.
 
 Risk controls:
-  * Size so that a stop-out loses ~1% of equity INCLUDING both fees and slippage.
+  * Size so that a stop-out loses `risk_per_trade` of equity INCLUDING both fees and slippage.
   * 1x: a buy can never cost more than available cash (spot, no margin).
-  * Daily loss limit: if close equity <= UTC-day-start equity * (1 - 3%), no new
+  * At most `max_positions` open trades; extra signals are skipped in universe order.
+  * Daily loss limit: if close equity <= UTC-day-start equity * (1 - limit), no new
     entries until the next UTC day.
-  * Kill switch: if close equity <= equity high * (1 - 15%), no new entries ever
+  * Kill switch: if close equity <= equity high * (1 - kill), no new entries ever
     and no more management; open positions exit only via their resting stops.
 """
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 
 import numpy as np
 import pandas as pd
 
 from config import Costs, MeanRevParams, Risk, TrendParams
 from indicators import atr, ema, rsi, sma
+
+FIELDS = ["open", "high", "low", "close", "ema_tf", "ema_mr", "dc_high", "atr_tf", "atr_mr", "rsi", "sma_exit"]
 
 
 @dataclass
@@ -34,7 +40,7 @@ class Position:
     stop: float
     entry_fee: float
     risk_usd: float
-    entry_time: pd.Timestamp
+    entry_time: str
     bars: int = 0
     high: float = 0.0
 
@@ -60,145 +66,208 @@ def add_indicators(df, tp: TrendParams, mp: MeanRevParams):
     return df
 
 
-def run(data: dict, costs=Costs(), risk=Risk(), tp=TrendParams(), mp=MeanRevParams(),
-        strategies=("trend", "meanrev"), start=None, end=None):
-    data = {c: add_indicators(d, tp, mp) for c, d in data.items()}
-    index = sorted(set().union(*[d.index for d in data.values()]))
-    index = [t for t in index if (start is None or t >= start) and (end is None or t < end)]
-    coins = list(data)
-    rows = {c: data[c].reindex(index) for c in coins}
-    arr = {c: {k: rows[c][k].to_numpy() for k in rows[c].columns} for c in coins}
+class Book:
+    """All trading state. `step(t, bars)` processes one completed 4h bar for every coin."""
 
-    fee, slip = costs.fee, costs.slippage
-    cash = risk.capital
-    pos: dict[str, Position] = {}
-    pending_entries = []  # (coin, strategy, stop)
-    pending_exits = set()
-    trades, eq_curve = [], []
-    eq_high = risk.capital
-    killed_at = None
-    day, day_start_eq, day_blocked = None, risk.capital, False
-    blocked_days = 0
-    skipped = {"gap_below_stop": 0, "below_min_notional": 0, "no_cash": 0}
+    def __init__(self, coins, costs=Costs(), risk=Risk(), tp=TrendParams(), mp=MeanRevParams(),
+                 strategies=("trend", "meanrev")):
+        self.coins, self.costs, self.risk, self.tp, self.mp = list(coins), costs, risk, tp, mp
+        self.strategies = tuple(strategies)
+        self.cash = risk.capital
+        self.pos: dict[str, Position] = {}
+        self.pending_entries = []  # [coin, strategy, stop]
+        self.pending_exits = []
+        self.trades, self.equity = [], []  # equity: [iso time, value]
+        self.events = []  # human-readable log of orders (what the bot would send)
+        self.eq_high = risk.capital
+        self.killed_at = None
+        self.day, self.day_start_eq, self.day_blocked = None, risk.capital, False
+        self.blocked_days = 0
+        self.last_close = {}
+        self.last_bar = None
+        self.skipped = {"gap_below_stop": 0, "below_min_notional": 0, "no_cash": 0, "max_positions": 0}
 
-    def close_pos(p, price, t, reason):
-        nonlocal cash
+    # ---- state (de)serialisation for the paper bot ----
+    def to_dict(self):
+        d = {k: v for k, v in self.__dict__.items() if k not in ("costs", "risk", "tp", "mp", "pos")}
+        d["pos"] = {c: asdict(p) for c, p in self.pos.items()}
+        return d
+
+    def load_dict(self, d):
+        for k, v in d.items():
+            if k == "pos":
+                self.pos = {c: Position(**p) for c, p in v.items()}
+            elif k != "coins":
+                setattr(self, k, v)
+        self.strategies = tuple(self.strategies)
+        return self
+
+    # ---- helpers ----
+    def _log(self, t, msg):
+        self.events.append(f"{t} {msg}")
+
+    def _px(self, bars, c, f):
+        b = bars.get(c)
+        return b[f] if b is not None else self.last_close.get(c, self.pos[c].entry)
+
+    def _mtm(self, bars, f):
+        return self.cash + sum(p.qty * self._px(bars, c, f) for c, p in self.pos.items())
+
+    def _close(self, c, price, t, reason):
+        p = self.pos.pop(c)
+        fee, slip = self.costs.fee, self.costs.slippage
         fill = price * (1 - slip)
         proceeds = p.qty * fill
         exit_fee = proceeds * fee
-        cash += proceeds - exit_fee
+        self.cash += proceeds - exit_fee
         pnl = proceeds - exit_fee - (p.qty * p.entry + p.entry_fee)
-        trades.append(dict(coin=p.coin, strategy=p.strategy, entry_time=p.entry_time, exit_time=t,
-                           entry=p.entry, exit=fill, qty=p.qty, notional=p.qty * p.entry,
-                           fees=p.entry_fee + exit_fee, pnl=pnl, R=pnl / p.risk_usd,
-                           bars=p.bars, reason=reason))
+        self.trades.append(dict(coin=c, strategy=p.strategy, entry_time=p.entry_time, exit_time=t,
+                                entry=p.entry, exit=fill, qty=p.qty, notional=p.qty * p.entry,
+                                fees=p.entry_fee + exit_fee, pnl=pnl, R=pnl / p.risk_usd,
+                                bars=p.bars, reason=reason))
+        self._log(t, f"SELL {c} qty={p.qty:.8g} @ {fill:.6g} ({reason}) pnl=${pnl:+.4f} R={pnl / p.risk_usd:+.2f}")
 
-    def mtm(i, field_="close"):
-        v = cash
-        for c, p in pos.items():
-            px = arr[c][field_][i]
-            v += p.qty * (px if not np.isnan(px) else p.entry)
-        return v
+    # ---- one bar ----
+    def step(self, t, bars):
+        """t: bar open time (ISO string). bars: {coin: {field: value}} for coins with a bar at t."""
+        fee, slip, risk, tp, mp = self.costs.fee, self.costs.slippage, self.risk, self.tp, self.mp
+        day = t[:10]
+        if day != self.day:
+            self.day = day
+            self.day_start_eq = self._mtm(bars, "open")
+            self.day_blocked = False
 
-    for i, t in enumerate(index):
-        # ---- new UTC day ----
-        if t.date() != day:
-            day = t.date()
-            day_start_eq = mtm(i, "open") if i else risk.capital
-            day_blocked = False
+        # at the open: queued market exits, then queued entries
+        for c in self.pending_exits:
+            if c in self.pos and c in bars:
+                self._close(c, bars[c]["open"], t, "signal")
+        self.pending_exits = []
 
-        # ---- at the open: queued market exits, then queued entries ----
-        for c in list(pending_exits):
-            o = arr[c]["open"][i]
-            if c in pos and not np.isnan(o):
-                close_pos(pos.pop(c), o, t, "signal")
-        pending_exits.clear()
-
-        can_enter = killed_at is None and not day_blocked
-        for c, strat, stop in pending_entries:
-            o = arr[c]["open"][i]
-            if not can_enter or c in pos or np.isnan(o) or (risk.max_positions and len(pos) >= risk.max_positions):
+        can_enter = self.killed_at is None and not self.day_blocked
+        for c, strat, stop in self.pending_entries:
+            if not can_enter or c in self.pos or c not in bars:
                 continue
-            fill = o * (1 + slip)
+            if risk.max_positions and len(self.pos) >= risk.max_positions:
+                self.skipped["max_positions"] += 1
+                continue
+            fill = bars[c]["open"] * (1 + slip)
             if fill <= stop:
-                skipped["gap_below_stop"] += 1
+                self.skipped["gap_below_stop"] += 1
                 continue
-            equity = mtm(i, "open")
+            equity = self._mtm(bars, "open")
             risk_usd = risk.risk_per_trade * equity
             loss_per_unit = (fill - stop * (1 - slip)) + fee * fill + fee * stop * (1 - slip)
             qty = risk_usd / loss_per_unit
-            if qty * fill * (1 + fee) > cash:  # 1x / spot: cannot spend more than cash
-                qty = cash / (fill * (1 + fee))
-                if qty * fill < costs.min_notional:
-                    skipped["no_cash"] += 1
+            if qty * fill * (1 + fee) > self.cash:  # 1x / spot
+                qty = self.cash / (fill * (1 + fee))
+                if qty * fill < self.costs.min_notional:
+                    self.skipped["no_cash"] += 1
                     continue
-            if qty * fill < costs.min_notional:
-                skipped["below_min_notional"] += 1
+            if qty * fill < self.costs.min_notional:
+                self.skipped["below_min_notional"] += 1
                 continue
             entry_fee = qty * fill * fee
-            cash -= qty * fill + entry_fee
-            pos[c] = Position(c, strat, qty, fill, stop, entry_fee,
-                              qty * loss_per_unit, t, high=arr[c]["high"][i])
-        pending_entries = []
+            self.cash -= qty * fill + entry_fee
+            self.pos[c] = Position(c, strat, qty, fill, stop, entry_fee, qty * loss_per_unit, t,
+                                   high=bars[c]["high"])
+            self._log(t, f"BUY {c} qty={qty:.8g} @ {fill:.6g} ({strat}); STOP-SELL placed @ {stop:.6g}")
+        self.pending_entries = []
 
-        # ---- intrabar: resting stops ----
-        for c in list(pos):
-            p = pos[c]
-            o, lo = arr[c]["open"][i], arr[c]["low"][i]
-            if np.isnan(o):
+        # intrabar: resting stops
+        for c in list(self.pos):
+            if c not in bars:
                 continue
-            if o <= p.stop:
-                close_pos(pos.pop(c), o, t, "stop_gap")
-            elif lo <= p.stop:
-                close_pos(pos.pop(c), p.stop, t, "stop")
+            p, b = self.pos[c], bars[c]
+            if b["open"] <= p.stop:
+                self._close(c, b["open"], t, "stop_gap")
+            elif b["low"] <= p.stop:
+                self._close(c, p.stop, t, "stop")
 
-        # ---- at the close: risk checks ----
-        equity = mtm(i)
-        eq_curve.append((t, equity))
-        eq_high = max(eq_high, equity)
-        if killed_at is None and equity <= eq_high * (1 - risk.kill_switch):
-            killed_at = t
-        if not day_blocked and equity <= day_start_eq * (1 - risk.daily_loss_limit):
-            day_blocked = True
-            blocked_days += 1
-        if killed_at is not None:
-            continue  # stop all, keep stops
+        for c, b in bars.items():
+            self.last_close[c] = b["close"]
+        self.last_bar = t
 
-        # ---- manage open positions ----
-        for c, p in pos.items():
-            a = arr[c]
-            if np.isnan(a["close"][i]):
+        # at the close: risk checks
+        equity = self._mtm(bars, "close")
+        self.equity.append([t, equity])
+        self.eq_high = max(self.eq_high, equity)
+        if self.killed_at is None and equity <= self.eq_high * (1 - risk.kill_switch):
+            self.killed_at = t
+            self._log(t, f"KILL SWITCH: equity ${equity:.2f} <= high ${self.eq_high:.2f} - {risk.kill_switch:.0%}. "
+                         "No new trades; resting stops stay.")
+        if not self.day_blocked and equity <= self.day_start_eq * (1 - risk.daily_loss_limit):
+            self.day_blocked = True
+            self.blocked_days += 1
+            self._log(t, f"DAILY LIMIT: equity ${equity:.2f} vs day start ${self.day_start_eq:.2f}. "
+                         "No new entries until next UTC day.")
+        if self.killed_at is not None:
+            return
+
+        # manage open positions
+        for c, p in self.pos.items():
+            if c not in bars:
                 continue
+            b = bars[c]
             p.bars += 1
-            p.high = max(p.high, a["high"][i])
+            p.high = max(p.high, b["high"])
             if p.strategy == "trend":
-                p.stop = max(p.stop, p.high - tp.trail_atr * a["atr_tf"][i])
-            else:
-                if a["close"][i] > a["sma_exit"][i] or p.bars >= mp.max_bars:
-                    pending_exits.add(c)
+                new = max(p.stop, p.high - tp.trail_atr * b["atr_tf"])
+                if new > p.stop:
+                    self._log(t, f"MOVE STOP {c} {p.stop:.6g} -> {new:.6g}")
+                p.stop = new
+            elif b["close"] > b["sma_exit"] or p.bars >= mp.max_bars:
+                self.pending_exits.append(c)
 
-        # ---- signals for next open ----
-        if day_blocked:
-            continue
-        for c in coins:
-            if c in pos:
+        # signals for the next open
+        if self.day_blocked:
+            return
+        for c in self.coins:
+            if c in self.pos or c not in bars:
                 continue
-            a = arr[c]
-            cl = a["close"][i]
-            if np.isnan(cl):
-                continue
-            if "trend" in strategies and cl > a["ema_tf"][i] and cl > a["dc_high"][i]:
-                pending_entries.append((c, "trend", cl - tp.init_stop_atr * a["atr_tf"][i]))
-            elif ("meanrev" in strategies and cl > a["ema_mr"][i] and a["rsi"][i] < mp.rsi_entry):
-                pending_entries.append((c, "meanrev", cl - mp.stop_atr * a["atr_mr"][i]))
+            b = bars[c]
+            cl = b["close"]
+            if "trend" in self.strategies and cl > b["ema_tf"] and cl > b["dc_high"]:
+                self.pending_entries.append([c, "trend", cl - tp.init_stop_atr * b["atr_tf"]])
+            elif "meanrev" in self.strategies and cl > b["ema_mr"] and b["rsi"] < mp.rsi_entry:
+                self.pending_entries.append([c, "meanrev", cl - mp.stop_atr * b["atr_mr"]])
+        for c, strat, stop in self.pending_entries:
+            self._log(t, f"SIGNAL {c} {strat}: buy at next open, stop {stop:.6g}")
 
-    # mark anything still open at the last close
-    last = len(index) - 1
-    for c in list(pos):
-        close_pos(pos.pop(c), arr[c]["close"][last], index[last], "end_of_test")
 
-    eq = pd.Series(dict(eq_curve))
-    return Result(pd.DataFrame(trades), eq, killed_at, blocked_days, skipped)
+def bar_rows(data, start=None, end=None):
+    """Yield (iso time, {coin: {field: value}}) for each bar time, skipping coins with no bar/NaN."""
+    index = sorted(set().union(*[d.index for d in data.values()]))
+    index = [t for t in index if (start is None or t >= start) and (end is None or t < end)]
+    cols = {c: d.reindex(index)[FIELDS].to_numpy() for c, d in data.items()}
+    for i, t in enumerate(index):
+        bars = {}
+        for c, a in cols.items():
+            row = a[i]
+            if not np.isnan(row[0]):
+                # NaN indicators (warm-up) make every comparison False -> no signal, like before
+                bars[c] = dict(zip(FIELDS, row.tolist()))
+        yield t.isoformat(), bars
+
+
+def run(data: dict, costs=Costs(), risk=Risk(), tp=TrendParams(), mp=MeanRevParams(),
+        strategies=("trend", "meanrev"), start=None, end=None):
+    data = {c: add_indicators(d, tp, mp) for c, d in data.items()}
+    book = Book(data, costs, risk, tp, mp, strategies)
+    for t, bars in bar_rows(data, start, end):
+        book.step(t, bars)
+    for c in list(book.pos):  # mark anything still open at the last close
+        book._close(c, book.last_close[c], book.last_bar, "end_of_test")
+    return to_result(book)
+
+
+def to_result(book):
+    tr = pd.DataFrame(book.trades)
+    if not tr.empty:
+        tr["entry_time"] = pd.to_datetime(tr.entry_time)
+        tr["exit_time"] = pd.to_datetime(tr.exit_time)
+    eq = pd.Series({pd.Timestamp(t): v for t, v in book.equity})
+    kill = pd.Timestamp(book.killed_at) if book.killed_at else None
+    return Result(tr, eq, kill, book.blocked_days, dict(book.skipped))
 
 
 def stats(res: Result, capital=100.0):
