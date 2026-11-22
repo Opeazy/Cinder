@@ -27,3 +27,9 @@ Trend following and mean reversion on top Coinbase spot coins, 4-hour candles.
 - [x] Fee tier: 0.50% per side.
 - [ ] Approve or change the draft universe and entry/exit rules in `backtest/README.md`.
 - [ ] Define what counts as a "matching" paper trade (vs. backtest expectation).
+
+## Status
+- 2026-11-22: Draft rules backtested on 8 coins, 2022 to 2026, full costs
+  (`backtest/RESULTS.md`). **Both strategies FAIL golden rule 2. No bot.**
+  Trend has a small edge before fees (PF 1.14 at 0% fees) that 0.50%/side fees wipe out.
+  Mean reversion loses even with zero fees.

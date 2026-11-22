@@ -14,6 +14,7 @@ Requires Python 3.10+, pandas, numpy (pytest for tests). All parameters live in 
 ## Draft rules (for Omar to approve or change)
 
 **Universe:** BTC, ETH, SOL, XRP, DOGE, ADA, LINK, AVAX (USD pairs). Fixed list chosen
+XRP-USD data starts 2023-07 (relisted on Coinbase then).
 today, so the test has survivorship bias: these are coins that are still large now.
 
 **Timeframe:** 4h bars aligned to UTC (00, 04, 08, 12, 16, 20). Decisions at bar close,
