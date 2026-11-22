@@ -32,6 +32,8 @@ dropped 2026-11-22: no edge in backtest).
       same period, entry and exit prices within 0.5% (`paper.py --compare`).
 - [ ] Schedule the paper bot to run every 4h (Claude scheduled task blocked by permissions; Omar to allow or create it).
 - [ ] Confirm Coinbase MAKER fee rate (decides whether limit entries are worth it).
+- [ ] Omar has Coinbase One (2026-11-22). Which plan? Zero-fee trading reportedly excludes Advanced Trade
+      (needed for exchange stop orders); higher plans reportedly rebate Advanced fees. Check the Advanced fee page.
 
 ## Status
 - 2026-11-22: Draft rules backtested on 8 coins, 2022 to 2026, full costs
