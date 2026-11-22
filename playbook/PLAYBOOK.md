@@ -1,7 +1,8 @@
 # Omar Delacruz: Playbook
 
 ## Mandate
-Trend following and mean reversion on top Coinbase spot coins, 4-hour candles.
+Trend following on top Coinbase spot coins, 4-hour candles (mean reversion
+dropped 2026-11-22: no edge in backtest).
 1x only, long only. Never go live without Omar's "go live".
 
 ## Parameters
@@ -9,9 +10,9 @@ Trend following and mean reversion on top Coinbase spot coins, 4-hour candles.
 | Item | Value |
 |---|---|
 | Capital | $100 (paper first) |
-| Risk per trade | 1% (~$1) |
+| Risk per trade | 0.5% (~$0.50), changed from 1% on 2026-11-22 |
 | Daily loss limit | 3% (~$3), no new entries until next UTC day |
-| Kill switch | -15% from account high (~$15): stop all, keep stops |
+| Kill switch | -25% from account high (~$25): stop all, keep stops. Changed from -15% on 2026-11-22 |
 | Mode | PAPER until Omar says "go live" |
 | Time zone | US Mountain, awake from 8:00 am |
 | Exchange | Coinbase (spot, no shorting) |
@@ -25,7 +26,7 @@ Trend following and mean reversion on top Coinbase spot coins, 4-hour candles.
 
 ## Open items
 - [x] Fee tier: 0.50% per side.
-- [ ] Approve or change the draft universe and entry/exit rules in `backtest/README.md`.
+- [x] Rules: trend only, 180-bar breakout (`backtest/config.py` CHOSEN), 20 coins.
 - [ ] Define what counts as a "matching" paper trade (vs. backtest expectation).
 
 ## Status
@@ -37,3 +38,5 @@ Trend following and mean reversion on top Coinbase spot coins, 4-hour candles.
   Only the 180-bar breakout passes golden rule 2 (PF 1.31 at 0.50% fees, +41% over 2022 to 2026 with limits off).
   **But its drawdown (~-28%) is deeper than the -15% kill switch**, which stops it even at 0.5% risk.
   Decision needed from Omar before paper trading.
+- 2026-11-22: **Omar chose option 1**: trend only (180-bar breakout), 0.5% risk, -25% kill switch.
+  Universe widened from 8 to 20 coins.

@@ -5,7 +5,10 @@ from pathlib import Path
 DATA_DIR = Path(__file__).parent / "data"
 
 # DRAFT universe: large, liquid Coinbase USD spot pairs (fixed list -> survivorship bias, see README).
-UNIVERSE = ["BTC", "ETH", "SOL", "XRP", "DOGE", "ADA", "LINK", "AVAX"]
+ORIGINAL = ["BTC", "ETH", "SOL", "XRP", "DOGE", "ADA", "LINK", "AVAX"]
+# Added 2026-11-22 after the 180-bar rules were fixed: an out-of-sample check on unseen coins.
+ADDED = ["LTC", "BCH", "DOT", "UNI", "AAVE", "NEAR", "ATOM", "XLM", "HBAR", "SHIB", "ETC", "FIL"]
+UNIVERSE = ORIGINAL + ADDED
 
 
 @dataclass
@@ -18,9 +21,9 @@ class Costs:
 @dataclass
 class Risk:
     capital: float = 100.0
-    risk_per_trade: float = 0.01   # 1% of equity, fees included in the risk
+    risk_per_trade: float = 0.005  # 0.5% of equity, fees included (Omar, 2026-11-22; was 1%)
     daily_loss_limit: float = 0.03  # vs equity at UTC day start -> no new entries until next UTC day
-    kill_switch: float = 0.15       # drawdown from equity high -> stop all, keep stops
+    kill_switch: float = 0.25       # drawdown from equity high -> stop all, keep stops (Omar, 2026-11-22; was 15%)
 
 
 @dataclass
@@ -41,3 +44,7 @@ class MeanRevParams:
     atr: int = 14
     stop_atr: float = 3.0
     max_bars: int = 18        # time stop: 3 days
+
+
+# Chosen strategy (Omar, 2026-11-22): trend only, slowest variant from RESULTS_SLOW.md.
+CHOSEN = TrendParams(breakout=180, atr=42, init_stop_atr=5.0, trail_atr=7.0)

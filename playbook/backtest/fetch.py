@@ -71,7 +71,8 @@ def main():
     start = datetime.fromisoformat(args.start).replace(tzinfo=timezone.utc)
     now = datetime.now(timezone.utc)
     end = now.replace(minute=0, second=0, microsecond=0) - timedelta(hours=now.hour % 4)  # last complete 4h boundary
-    meta = {}
+    pj = DATA_DIR / "products.json"
+    meta = json.loads(pj.read_text()) if pj.exists() else {}
     for coin in args.coins.split(","):
         product = f"{coin}-USD"
         info = product_info(product)
@@ -80,7 +81,7 @@ def main():
         bars = to_4h(h)
         bars.to_csv(DATA_DIR / f"{coin}-USD_4h.csv")
         print(f"{product}: {len(h)} 1h -> {len(bars)} 4h bars, {bars.index[0]} .. {bars.index[-1]}", flush=True)
-    (DATA_DIR / "products.json").write_text(json.dumps(meta, indent=2))
+    pj.write_text(json.dumps(meta, indent=2))
 
 
 if __name__ == "__main__":
