@@ -16,6 +16,7 @@ python stocks.py           # strategy A on ETFs, daily bars -> RESULTS_ETF.md
 python paper.py            # paper bot: process new 4h bars -> ../paper/
 python paper.py --status   # paper book
 python paper.py --compare  # paper trades vs backtest over the same period (golden rule 3)
+python live.py             # DRY RUN: the exact Coinbase orders a live bot would send -> ../paper/dry_run.json
 ```
 
 **Current strategy:** see `CHOSEN` and `Risk` in `config.py` and `RESULTS_CHOSEN.md`.

@@ -126,7 +126,7 @@ class Book:
         self.cash += proceeds - exit_fee
         pnl = proceeds - exit_fee - (p.qty * p.entry + p.entry_fee)
         self.trades.append(dict(coin=c, strategy=p.strategy, entry_time=p.entry_time, exit_time=t,
-                                entry=p.entry, exit=fill, qty=p.qty, notional=p.qty * p.entry,
+                                entry=p.entry, exit=fill, stop=p.stop, qty=p.qty, notional=p.qty * p.entry,
                                 fees=p.entry_fee + exit_fee, pnl=pnl, R=pnl / p.risk_usd,
                                 bars=p.bars, reason=reason))
         self._log(t, f"SELL {c} qty={p.qty:.8g} @ {fill:.6g} ({reason}) pnl=${pnl:+.4f} R={pnl / p.risk_usd:+.2f}")

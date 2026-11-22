@@ -76,3 +76,9 @@ dropped 2026-11-22: no edge in backtest).
   exchange, no trade) rules out ETFs on Coinbase. ETF results kept for reference; crypto strategy A continues.
 - 2026-11-22: **Omar: stay Coinbase only.** No second broker. Plan: paper-trade crypto strategy A to 30
   matching trades, then Omar decides on "go live".
+- 2026-11-22: **Dry-run live mode** (`backtest/live.py`): turns the paper book into the exact Coinbase
+  Advanced orders a live bot would send (stop-limit sells with a 3% buffer, post-only limit buys, market
+  fallbacks), checks them against Coinbase's real size/price rules and current prices, and writes
+  `paper/dry_run.json`. Sends nothing, reads no keys. Before live: confirm order fields with
+  POST /orders/preview, decide how the API key is stored (Coinbase keys sign each request, so the key
+  must live on the machine running the bot).
