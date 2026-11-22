@@ -62,3 +62,8 @@ dropped 2026-11-22: no edge in backtest).
   market entries +7.4% (PF 1.08), limit entries +14.5% (PF 1.16), both ~flat or negative after
   June 2024. **The chosen strategy now FAILS golden rule 2 (no backtest with full costs, no bot).**
   RESULTS.md and RESULTS_SLOW.md were made at the old 0.50% assumption. Decision needed from Omar.
+- 2026-11-22: **Rethink at real fees** (`backtest/RESULTS_RETHINK.md`), 2 very slow variants fixed in advance.
+  A (60-day breakout, 200-day trend filter, wide stops, limit buys): **PASSES** rule 2. PF 1.37,
+  +17.7% with limits on, max DD -16%, both periods positive (PF 1.40 / 1.36), positive at 1.20% taker.
+  B (90-day) also passes but with fewer trades and a weaker late period. ~38 trades/year for A.
+  Decision needed from Omar: switch the paper bot to A.
