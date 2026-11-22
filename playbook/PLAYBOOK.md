@@ -14,7 +14,7 @@ dropped 2026-11-22: no edge in backtest).
 | Max open trades | 8 (max 4% open risk), added 2026-11-22 |
 | Daily loss limit | 3% (~$3), no new entries until next UTC day |
 | Kill switch | -25% from account high (~$25): stop all, keep stops. Changed from -15% on 2026-11-22 |
-| Mode | PAPER until Omar says "go live" |
+| Mode | Omar said "go live" and skipped the paper-trade rule on 2026-11-22. Live bot built; not yet run |
 | Time zone | US Mountain, awake from 8:00 am |
 | Exchange | Coinbase (spot, no shorting) |
 | Fees | Coinbase Advanced Intro tier: maker 0.50%, taker 0.90% (stops are always taker). Was assumed 0.50% flat until 2026-11-22 |
@@ -85,3 +85,9 @@ dropped 2026-11-22: no edge in backtest).
 - 2026-11-22: **Omar changed golden rule 3: 15 matching paper trades (was 30).** At ~38 trades/year that is
   roughly 4-5 months. Caveat: with ~1 win in 3, 15 trades is only ~5 winners, so the paper P&L says little
   about the edge; the match check mainly proves the bot runs reliably.
+- 2026-11-22: **Omar said "go live" and chose to skip golden rule 3** (0 of 15 paper trades). Claude advised
+  against it (untested strategy and code, ~$4/year expected profit). Paper bot keeps running for comparison.
+- 2026-11-22: **Live trader built** (`backtest/trader.py`, `live.py --preview / --live`), tested against a fake
+  Coinbase. Every filled buy gets a stop-limit sell at once; if that fails it sells at market (rule 1).
+  Needs: Coinbase API key (View + Trade only, never Transfer) on the machine that runs it, USD in the account,
+  a --preview run, then --live every 4h.

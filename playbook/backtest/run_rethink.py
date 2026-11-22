@@ -21,7 +21,7 @@ from run import HDR, MIN_PF, MIN_TRADES, SPLIT, fmt, load, md_table
 OUT = Path(__file__).parent
 ENTRY = EntryParams(mode="limit", offset_atr=0.0, valid_bars=1, fallback_market=True)
 VARIANTS = {
-    "current 180": CHOSEN,
+    "current 180": TrendParams(breakout=180, atr=42, init_stop_atr=5.0, trail_atr=7.0),
     "A 60-day": TrendParams(regime_ema=1200, breakout=360, atr=42, init_stop_atr=6.0, trail_atr=9.0),
     "B 90-day": TrendParams(regime_ema=1200, breakout=540, atr=42, init_stop_atr=8.0, trail_atr=12.0),
 }

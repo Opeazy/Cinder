@@ -157,13 +157,20 @@ class Book:
     # ---- one bar ----
     def step(self, t, bars):
         """t: bar open time (ISO string). bars: {coin: {field: value}} for coins with a bar at t."""
-        fee, slip, risk, tp, mp = self.costs.fee, self.costs.slippage, self.risk, self.tp, self.mp
+        self.begin_bar(t, bars)
+        self.fill_phase(t, bars)
+        self.decide_phase(t, bars)
+
+    def begin_bar(self, t, bars):
         day = t[:10]
         if day != self.day:
             self.day = day
             self.day_start_eq = self._mtm(bars, "open")
             self.day_blocked = False
 
+    def fill_phase(self, t, bars):
+        """Simulated fills (backtest/paper). Live mode replaces this with real Coinbase fills."""
+        fee, slip, risk = self.costs.fee, self.costs.slippage, self.risk
         # at the open: queued market exits, then queued entries
         for c in self.pending_exits:
             if c in self.pos and c in bars:
@@ -213,6 +220,9 @@ class Book:
             elif b["low"] <= p.stop:
                 self._close(c, p.stop, t, "stop")
 
+    def decide_phase(self, t, bars):
+        """At the bar close: risk checks, trailing stops, new signals. Shared by backtest, paper and live."""
+        risk, tp, mp = self.risk, self.tp, self.mp
         for c, b in bars.items():
             self.last_close[c] = b["close"]
         self.last_bar = t

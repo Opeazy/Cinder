@@ -1,3 +1,7 @@
 data/
 __pycache__/
 .pytest_cache/
+# Coinbase API keys and live state must never be committed
+*key*.json
+cdp_api_key*
+playbook-live/

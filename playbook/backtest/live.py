@@ -1,4 +1,14 @@
-"""Live mode, DRY RUN ONLY. Translates the paper book into the exact Coinbase Advanced
+"""Live mode.
+
+    python live.py                    # DRY RUN from the paper book (no key, sends nothing)
+    python live.py --preview          # with your key: Coinbase checks sample orders, places NOTHING
+    python live.py --live             # REAL ORDERS. Needs PLAYBOOK_GO_LIVE=yes and the key file
+
+Key: a Coinbase CDP API key file (JSON) on the machine running the bot, path in COINBASE_KEY_FILE.
+Create it with only "View" and "Trade" permissions, NEVER "Transfer". Never commit it.
+Live state lives OUTSIDE the repo in PLAYBOOK_LIVE_DIR (default ~/playbook-live).
+
+Dry run details: Translates the paper book into the exact Coinbase Advanced
 Trade orders a live bot WOULD send, checks them against Coinbase's real product rules
 and current prices, and writes them to ../paper/dry_run.json. It sends NOTHING and reads
 no API keys.
@@ -8,8 +18,8 @@ no API keys.
 Golden rules enforced here:
   1. No stop on the exchange, no trade: every open position must get a resting stop order,
      and a BUY is only listed together with the stop that follows it.
-  3/4. Sending is not implemented. `send()` always refuses. Going live needs 15+ matching
-     paper trades AND Omar's "go live", then a separate build + test.
+  3/4. The dry run never sends. Omar skipped rule 3 and said "go live" on 2026-11-22;
+     real orders only via --live with PLAYBOOK_GO_LIVE=yes.
 
 Order formats follow the Advanced Trade API (POST /api/v3/brokerage/orders). Two details are
 not confirmed from the official docs yet and MUST be checked with POST /orders/preview
@@ -35,7 +45,7 @@ STOP_LIMIT_BUFFER = 0.03  # stop-limit sell: limit 3% below the stop trigger, so
 
 
 def send(order):
-    raise SystemExit("Live sending is not implemented. Needs 15+ matching paper trades and Omar's 'go live'.")
+    raise SystemExit("The dry run never sends. Real orders go through `python live.py --live` only.")
 
 
 def get(path):
@@ -162,5 +172,128 @@ def main():
         print("  Nothing to send: no open positions and no orders pending.")
 
 
+# ---------------------------------------------------------------- preview / live
+import os  # noqa: E402
+import argparse  # noqa: E402
+
+
+def _key_file():
+    k = os.environ.get("COINBASE_KEY_FILE")
+    if not k or not Path(k).exists():
+        raise SystemExit("Set COINBASE_KEY_FILE to the path of your Coinbase CDP API key JSON file.")
+    return k
+
+
+def _check_perms(x):
+    p = x.permissions()
+    print(f"API key permissions: can_view={p.get('can_view')} can_trade={p.get('can_trade')} "
+          f"can_transfer={p.get('can_transfer')} portfolio={p.get('portfolio_type')}")
+    if p.get("can_transfer"):
+        raise SystemExit("This key can TRANSFER (withdraw) funds. Make a new key with View + Trade only.")
+    if not p.get("can_trade"):
+        raise SystemExit("This key cannot trade. Make a key with View + Trade.")
+
+
+def run_preview():
+    from trader import CoinbaseExchange, fmt, floor_to
+    x = CoinbaseExchange(_key_file())
+    _check_perms(x)
+    print(f"USD available: ${x.balance('USD'):.2f}   USDC available: ${x.balance('USDC'):.2f}")
+    p = get("/products/BTC-USD")
+    bid, ask = x.best_bid_ask("BTC-USD")
+    size = fmt(floor_to(2.0 / bid, p["base_increment"]), p["base_increment"])
+    q = p["quote_increment"]
+    tests = {
+        "post-only limit buy (entry)": ("BUY", {"limit_limit_gtc": {
+            "base_size": size, "limit_price": fmt(floor_to(bid * 0.9, q), q), "post_only": True}}),
+        "market buy $2 (fallback)": ("BUY", {"market_market_ioc": {"quote_size": "2.00"}}),
+        "stop-limit sell (stop)": ("SELL", {"stop_limit_stop_limit_gtc": {
+            "base_size": size, "limit_price": fmt(floor_to(bid * 0.8 * 0.97, q), q),
+            "stop_price": fmt(floor_to(bid * 0.8, q), q), "stop_direction": "STOP_DIRECTION_STOP_DOWN"}}),
+    }
+    print("Previews (NOTHING is placed). A stop-limit SELL preview may report insufficient BTC; "
+          "that is fine as long as the order format itself is accepted.")
+    for name, (side, cfg) in tests.items():
+        r = x.preview("BTC-USD", side, cfg)
+        errs = r.get("errs") or []
+        print(f"- {name}: {'OK' if not errs else 'ERRORS ' + str(errs)} "
+              f"commission={r.get('commission_total')} warnings={r.get('warning') or []}")
+
+
+def run_live():
+    from config import UNIVERSE
+    from engine import bar_rows
+    from paper import fetch_all, last_complete_boundary, make_book
+    from trader import CoinbaseExchange, LiveTrader
+    import pandas as pd
+
+    if os.environ.get("PLAYBOOK_GO_LIVE") != "yes":
+        raise SystemExit("Refusing: set PLAYBOOK_GO_LIVE=yes to place real orders.")
+    x = CoinbaseExchange(_key_file())
+    _check_perms(x)
+    ldir = Path(os.environ.get("PLAYBOOK_LIVE_DIR", Path.home() / "playbook-live"))
+    ldir.mkdir(parents=True, exist_ok=True)
+    sfile, lfile = ldir / "state.json", ldir / "live.log"
+
+    def log(msg):
+        line = f"{datetime.now(timezone.utc).isoformat(timespec='seconds')} {msg}"
+        print(line)
+        with open(lfile, "a") as f:
+            f.write(line + "\n")
+
+    if sfile.exists():
+        st = json.loads(sfile.read_text())
+        book = make_book().load_dict(st["book"])
+        orders = st["orders"]
+    else:
+        usd = x.balance("USD")
+        capital = min(usd, Risk().capital)
+        if capital < 5:
+            raise SystemExit(f"Only ${usd:.2f} USD available. Fund the account with USD first.")
+        book, orders = make_book(), {}
+        book.cash = book.eq_high = book.day_start_eq = capital
+        book.equity = [[datetime.now(timezone.utc).isoformat(), capital]]
+        log(f"START live book with ${capital:.2f} (USD available ${usd:.2f}, cap ${Risk().capital:.0f})")
+
+    products = {c: get(f"/products/{c}-USD") for c in UNIVERSE}
+    end = last_complete_boundary(datetime.now(timezone.utc))
+    data, usable_end = fetch_all(end)
+    t_latest = (usable_end - pd.Timedelta(hours=4)).isoformat()
+    costs, risk = Costs(), Risk()
+    tr = LiveTrader(book, orders, x, products, log, taker_fee=costs.fee)
+
+    tr.sync(t_latest)
+    if book.last_bar is None or t_latest > book.last_bar:
+        rows = dict(bar_rows(data, start=pd.Timestamp(t_latest), end=usable_end))
+        bars = rows[t_latest]
+        if book.last_bar and pd.Timestamp(t_latest) - pd.Timestamp(book.last_bar) > pd.Timedelta(hours=4):
+            log(f"WARNING missed bars since {book.last_bar}; acting on the latest only")
+        n_ev = len(book.events)
+        book.begin_bar(t_latest, bars)
+        book.decide_phase(t_latest, bars)
+        for e in book.events[n_ev:]:
+            log(e)
+        tr.act(t_latest, bars, CHOSEN_ENTRY.fallback_market, costs.maker_fee, costs.fee,
+               risk.risk_per_trade, risk.max_positions)
+    ok = tr.check_rule1()
+    usd = x.balance("USD")
+    if usd + 0.5 < book.cash:
+        log(f"WARNING Coinbase USD ${usd:.2f} is below the bot's cash ${book.cash:.2f}")
+    sfile.write_text(json.dumps({"book": book.to_dict(), "orders": orders}, indent=1))
+    eq = book.equity[-1][1] if book.equity else book.cash
+    log(f"RUN DONE bar={book.last_bar} equity=${eq:.2f} cash=${book.cash:.2f} positions={list(book.pos)} "
+        f"resting_buys={list(orders.get('buy', {}))} rule1={'OK' if ok else 'FAIL'} "
+        f"kill={'HIT' if book.killed_at else 'ok'} trades={len(book.trades)}")
+
+
 if __name__ == "__main__":
-    main()
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--preview", action="store_true")
+    ap.add_argument("--live", action="store_true")
+    a = ap.parse_args()
+    if a.preview:
+        run_preview()
+    elif a.live:
+        run_live()
+    else:
+        main()
