@@ -67,3 +67,8 @@ dropped 2026-11-22: no edge in backtest).
   +17.7% with limits on, max DD -16%, both periods positive (PF 1.40 / 1.36), positive at 1.20% taker.
   B (90-day) also passes but with fewer trades and a weaker late period. ~38 trades/year for A.
   Decision needed from Omar: switch the paper bot to A.
+- 2026-11-22: **Paper bot switched to strategy A** (60-day breakout, limit buys); restarted at the 16:00 UTC bar.
+- 2026-11-22: **ETFs** (`backtest/RESULTS_ETF.md`): strategy A on daily bars, 15 liquid ETFs, 2005 to 2026,
+  commission-free (Coinbase stocks), 0.05% slippage. **PASSES** rule 2: 783 trades, PF 1.46, +101%,
+  max DD -19.6%, both halves positive (PF 1.50 / 1.44). But at 0.25%/side costs it nearly breaks even,
+  and buy-and-hold SPY made +752% (max drop -55%). Not yet verified: Coinbase stock stop orders and API.

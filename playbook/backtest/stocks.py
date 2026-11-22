@@ -1,7 +1,7 @@
 """ETF backtest: strategy A translated to DAILY bars, run on liquid US ETFs.
 
 Usage:
-    python stocks.py --fetch   # download daily history from stooq.com -> data/stocks/
+    python stocks.py --fetch   # download daily history from Yahoo Finance -> data/stocks/
     python stocks.py           # backtest -> RESULTS_ETF.md
 
 Fixed BEFORE any results were seen:
@@ -13,8 +13,7 @@ Fixed BEFORE any results were seen:
   * Costs: commission 0 (Coinbase stocks), slippage 0.05% per side for spread + stop slippage,
     min order $1 (fractional shares). Gaps through the stop fill at the open.
   * Same risk rules as the crypto playbook: 0.5% risk, max 8 open, 3% daily limit, -25% kill switch.
-  * Data: stooq daily bars (split-adjusted). Dividends are NOT included, which understates
-    holding returns, mostly for TLT, XLU, XLP.
+  * Data: Yahoo Finance daily bars, adjusted for splits and dividends (total return).
 """
 import argparse
 import io
@@ -39,25 +38,32 @@ SPLIT = pd.Timestamp("2016-01-01", tz="UTC")
 
 
 def fetch():
+    """Daily bars from Yahoo Finance's chart API, adjusted for splits AND dividends (total return)."""
+    import json
     SDIR.mkdir(parents=True, exist_ok=True)
     for t in ETFS:
-        url = f"https://stooq.com/q/d/l/?s={t.lower()}.us&i=d"
-        raw = None
-        for i in range(8):  # the connection to stooq is flaky through the proxy
+        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{t}?period1=946684800&period2={int(time.time())}&interval=1d&events=div,split"
+        for i in range(5):
             try:
-                req = urllib.request.Request(url, headers={"User-Agent": "backtest-client"})
-                raw = urllib.request.urlopen(req, timeout=60).read().decode()
-                if raw.lower().startswith("date"):
-                    break
+                req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+                j = json.loads(urllib.request.urlopen(req, timeout=60).read())
+                break
             except Exception as e:
                 print(f"  {t}: retry {i + 1} ({e})", flush=True)
-            time.sleep(3 * (i + 1))
-        if not raw or not raw.lower().startswith("date"):
-            raise SystemExit(f"could not download {t}: {raw[:200] if raw else 'no response'}")
-        df = pd.read_csv(io.StringIO(raw))
-        df.columns = [c.lower() for c in df.columns]
-        df["time"] = pd.to_datetime(df["date"]).dt.tz_localize("UTC")
-        df = df.set_index("time")[["open", "high", "low", "close", "volume"]].dropna()
+                time.sleep(3 * (i + 1))
+        else:
+            raise SystemExit(f"could not download {t}")
+        r = j["chart"]["result"][0]
+        q = r["indicators"]["quote"][0]
+        df = pd.DataFrame({k: q[k] for k in ("open", "high", "low", "close", "volume")},
+                          index=pd.to_datetime(r["timestamp"], unit="s", utc=True).normalize())
+        df["adj"] = r["indicators"]["adjclose"][0]["adjclose"]
+        df = df.dropna()
+        f = df["adj"] / df["close"]  # back-adjust OHLC so dividends count as return
+        for k in ("open", "high", "low", "close"):
+            df[k] = df[k] * f
+        df = df[~df.index.duplicated(keep="last")].drop(columns="adj")
+        df.index.name = "time"
         df.to_csv(SDIR / f"{t}.csv")
         print(f"{t}: {len(df)} days {df.index[0]:%Y-%m-%d} .. {df.index[-1]:%Y-%m-%d}", flush=True)
         time.sleep(1)
@@ -84,7 +90,7 @@ def main():
     w = L.append
     w("# ETFs: strategy A on daily bars\n")
     w(f"{len(data)} ETFs ({', '.join(data)}), daily bars {first:%Y-%m-%d} to {last:%Y-%m-%d}. "
-      "Rules and costs fixed in advance: see stocks.py. Dividends not included.\n")
+      "Rules and costs fixed in advance: see stocks.py. Prices include dividends.\n")
 
     w("## 1. Playbook as written: limits ON\n")
     w(H := HDR); r_on = go(risk=on); w(fmt(stats(r_on)))
@@ -103,7 +109,7 @@ def main():
     w("## 3. Cost stress: 0.25% per side (as if wide spreads or a commission)\n")
     w(H); stress = stats(go(risk=off, costs=replace(ETF_COSTS, fee=0.0025, maker_fee=0.0025))); w(fmt(stress)); w("")
 
-    w("## 4. Benchmark: buy and hold, same period (price only)\n")
+    w("## 4. Benchmark: buy and hold, same period (with dividends)\n")
     w("| ETF | Return | Max drop |\n|---|---|---|")
     for t in ("SPY", "QQQ", "TLT", "GLD"):
         if t in data:
