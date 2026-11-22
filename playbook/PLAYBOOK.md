@@ -30,7 +30,7 @@ dropped 2026-11-22: no edge in backtest).
 - [x] Rules: trend only, 180-bar breakout (`backtest/config.py` CHOSEN), 20 coins.
 - [x] "Matching" paper trade: same coin, entry bar and exit bar as the backtest over the
       same period, entry and exit prices within 0.5% (`paper.py --compare`).
-- [ ] Schedule the paper bot to run every 4h (Claude scheduled task blocked by permissions; Omar to allow or create it).
+- [x] Paper bot scheduled: Claude scheduled task "Playbook paper bot (every 4h)", 7 min after each 4h close (UTC).
 - [ ] Confirm Coinbase MAKER fee rate (decides whether limit entries are worth it).
 - [x] Coinbase One (checked 2026-11-22): $500/month zero-fee trading, spread applies, **Coinbase Advanced
       excluded**. The bot needs Advanced (exchange stop orders), so Coinbase One does not lower bot fees.
