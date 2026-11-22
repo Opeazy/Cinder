@@ -22,7 +22,7 @@ dropped 2026-11-22: no edge in backtest).
 ## Golden rules
 - No stop on the exchange, no trade.
 - No backtest with full costs, no bot.
-- No 30+ matching paper trades, no real money.
+- No 15+ matching paper trades, no real money. (Changed from 30 by Omar on 2026-11-22.)
 - No "go live" from Omar, no live mode.
 
 ## Open items
@@ -82,3 +82,6 @@ dropped 2026-11-22: no edge in backtest).
   `paper/dry_run.json`. Sends nothing, reads no keys. Before live: confirm order fields with
   POST /orders/preview, decide how the API key is stored (Coinbase keys sign each request, so the key
   must live on the machine running the bot).
+- 2026-11-22: **Omar changed golden rule 3: 15 matching paper trades (was 30).** At ~38 trades/year that is
+  roughly 4-5 months. Caveat: with ~1 win in 3, 15 trades is only ~5 winners, so the paper P&L says little
+  about the edge; the match check mainly proves the bot runs reliably.

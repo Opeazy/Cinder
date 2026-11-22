@@ -8,7 +8,7 @@ no API keys.
 Golden rules enforced here:
   1. No stop on the exchange, no trade: every open position must get a resting stop order,
      and a BUY is only listed together with the stop that follows it.
-  3/4. Sending is not implemented. `send()` always refuses. Going live needs 30+ matching
+  3/4. Sending is not implemented. `send()` always refuses. Going live needs 15+ matching
      paper trades AND Omar's "go live", then a separate build + test.
 
 Order formats follow the Advanced Trade API (POST /api/v3/brokerage/orders). Two details are
@@ -35,7 +35,7 @@ STOP_LIMIT_BUFFER = 0.03  # stop-limit sell: limit 3% below the stop trigger, so
 
 
 def send(order):
-    raise SystemExit("Live sending is not implemented. Needs 30+ matching paper trades and Omar's 'go live'.")
+    raise SystemExit("Live sending is not implemented. Needs 15+ matching paper trades and Omar's 'go live'.")
 
 
 def get(path):

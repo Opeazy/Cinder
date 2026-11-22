@@ -140,7 +140,7 @@ def compare(paper, bt):
     for k in sorted(extra):
         print(f"BACKTEST ONLY {k}")
     print(f"\n{matched}/{len(paper.trades)} paper trades match the backtest; {len(extra)} backtest-only trades. "
-          f"Golden rule 3 needs 30+ matching.")
+          f"Golden rule 3 needs 15+ matching.")
 
 
 if __name__ == "__main__":
