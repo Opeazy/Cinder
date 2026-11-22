@@ -1,10 +1,10 @@
 {
- "pass": true,
+ "pass": false,
  "trades >= 100": true,
- "PF >= 1.2": true,
+ "PF >= 1.2": false,
  "early half positive": true,
- "late half positive": true,
- "positive at 0.75% fees": true,
+ "late half positive": false,
+ "positive at 0.90% taker (real)": true,
  "kill switch not hit (limits on)": true,
  "added 12 coins positive (out of sample)": true
 }

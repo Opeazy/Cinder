@@ -13,10 +13,10 @@ UNIVERSE = ORIGINAL + ADDED
 
 @dataclass
 class Costs:
-    fee: float = 0.005        # 0.50% per side (Omar's Coinbase tier)
+    fee: float = 0.009        # TAKER 0.90%: market orders and every stop fill (Coinbase Advanced 'Intro' tier, 2026-11-22)
     slippage: float = 0.0005  # 0.05% per side, assumed for market/stop fills
     min_notional: float = 1.0  # Coinbase min_market_funds for USD pairs
-    maker_fee: float = 0.005   # fee for resting limit orders that fill as maker. TBD: Omar to confirm his maker rate
+    maker_fee: float = 0.005   # MAKER 0.50%: resting limit orders (Coinbase Advanced 'Intro' tier, 2026-11-22)
 
 
 @dataclass

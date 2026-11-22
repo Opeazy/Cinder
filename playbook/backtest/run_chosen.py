@@ -64,10 +64,10 @@ def main():
             w(f"| {label} | {p} " + fmt(halves[(label, p)]))
     w("")
 
-    w("## 4. Fee sensitivity, all 20 (limits off)\n")
+    w("## 4. Fee sensitivity, all 20 (limits off; same fee on every fill)\n")
     w("| Fee/side | " + H1[2:]); w("|---" + H2)
     fees = {}
-    for f in (0.0, 0.0025, 0.005, 0.0075):
+    for f in (0.0, 0.0025, 0.005, 0.0075, 0.009):
         fees[f] = stats(run(data, tp=CHOSEN, strategies=("trend",), risk=off, costs=replace(c0, fee=f)))
         w(f"| {f:.2%} " + fmt(fees[f]))
     w("")
@@ -80,7 +80,7 @@ def main():
     w(md_table(piv.sort_values("total R", ascending=False)) + "\n")
 
     w("## Verdict against golden rule 2\n")
-    w(f">= {MIN_TRADES} trades, PF >= {MIN_PF} at 0.50% fees, positive in BOTH halves, positive at 0.75% fees, "
+    w(f">= {MIN_TRADES} trades, PF >= {MIN_PF} at real fees, positive in BOTH halves, positive at the real 0.90% taker fee, "
       "and the playbook as written (limits ON) must not end in the kill switch.\n")
     s = stats(full["All 20"])
     checks = {
@@ -88,7 +88,7 @@ def main():
         f"PF >= {MIN_PF}": s["profit_factor"] >= MIN_PF,
         "early half positive": halves[("All 20", "early")]["expectancy_usd"] > 0,
         "late half positive": halves[("All 20", "late")]["expectancy_usd"] > 0,
-        "positive at 0.75% fees": fees[0.0075]["expectancy_usd"] > 0,
+        "positive at 0.90% taker (real)": s["expectancy_usd"] > 0,
         "kill switch not hit (limits on)": runs["All 20"].kill_time is None,
         "added 12 coins positive (out of sample)": stats(full["Added 12"])["expectancy_usd"] > 0,
     }

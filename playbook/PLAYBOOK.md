@@ -17,7 +17,7 @@ dropped 2026-11-22: no edge in backtest).
 | Mode | PAPER until Omar says "go live" |
 | Time zone | US Mountain, awake from 8:00 am |
 | Exchange | Coinbase (spot, no shorting) |
-| Fees | 0.50% per side (Omar's Coinbase tier) |
+| Fees | Coinbase Advanced Intro tier: maker 0.50%, taker 0.90% (stops are always taker). Was assumed 0.50% flat until 2026-11-22 |
 
 ## Golden rules
 - No stop on the exchange, no trade.
@@ -26,7 +26,7 @@ dropped 2026-11-22: no edge in backtest).
 - No "go live" from Omar, no live mode.
 
 ## Open items
-- [x] Fee tier: 0.50% per side.
+- [x] Fee tier: Intro, maker 0.50% / taker 0.90% (screenshot 2026-11-22).
 - [x] Rules: trend only, 180-bar breakout (`backtest/config.py` CHOSEN), 20 coins.
 - [x] "Matching" paper trade: same coin, entry bar and exit bar as the backtest over the
       same period, entry and exit prices within 0.5% (`paper.py --compare`).
@@ -34,7 +34,7 @@ dropped 2026-11-22: no edge in backtest).
 - [ ] Confirm Coinbase MAKER fee rate (decides whether limit entries are worth it).
 - [x] Coinbase One (checked 2026-11-22): $500/month zero-fee trading, spread applies, **Coinbase Advanced
       excluded**. The bot needs Advanced (exchange stop orders), so Coinbase One does not lower bot fees.
-- [ ] Omar to read his Coinbase Advanced maker/taker rates (Advanced Trade -> fees).
+- [x] Coinbase Advanced rates: Intro tier, maker 0.50% / taker 0.90%.
 
 ## Status
 - 2026-11-22: Draft rules backtested on 8 coins, 2022 to 2026, full costs
@@ -58,3 +58,7 @@ dropped 2026-11-22: no edge in backtest).
 - 2026-11-22: Limit-order entry test (`backtest/RESULTS_LIMIT.md`). Saves fees only on entries.
   At 0.25% maker: +29% vs +23.6% with market buys; at 0.40%: +25%; at 0.50%: no gain.
   Paper bot still uses market entries until Omar decides.
+- 2026-11-22: **Real fees are higher than assumed (taker 0.90%, not 0.50%).** Re-run:
+  market entries +7.4% (PF 1.08), limit entries +14.5% (PF 1.16), both ~flat or negative after
+  June 2024. **The chosen strategy now FAILS golden rule 2 (no backtest with full costs, no bot).**
+  RESULTS.md and RESULTS_SLOW.md were made at the old 0.50% assumption. Decision needed from Omar.

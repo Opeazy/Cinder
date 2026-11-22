@@ -23,7 +23,7 @@ VARIANTS = {
     "limit+fallback": EntryParams(mode="limit", offset_atr=0.0, valid_bars=1, fallback_market=True),
     "limit-dip": EntryParams(mode="limit", offset_atr=0.5, valid_bars=6),
 }
-MAKER = (0.0025, 0.004, 0.005)
+MAKER = (0.005,)  # Omar's real maker fee (Intro tier)
 
 
 def row(name, mk, r):
@@ -39,13 +39,13 @@ def main():
     L = []
     w = L.append
     w("# Limit-order entries vs market entries (chosen strategy, 20 coins, all limits ON)\n")
-    w("See `run_limit.py` for the variants and fill rules. Taker fee 0.50% for market buys and all stops, "
-      "slippage 0.05% on taker fills. Omar's maker fee is not confirmed yet, so three maker rates are shown.\n")
+    w("See `run_limit.py` for the variants and fill rules. Taker fee 0.90% for market buys and all stops, "
+      "slippage 0.05% on taker fills. Real Intro-tier fees: taker 0.90%, maker 0.50%.\n")
     hdr = ("| Entry | Maker fee | Trades | Limit fill rate | Win % | Profit factor | Return | Max DD | Fees | Kill switch |\n"
            "|---|---|---|---|---|---|---|---|---|---|")
     w("## 1. Whole period, 2022 to now\n"); w(hdr)
     base = run(data, tp=CHOSEN, strategies=("trend",))
-    w(row("market", "n/a (taker 0.50%)", base))
+    w(row("market", "n/a (taker 0.90%)", base))
     for mk in MAKER:
         for name, ep in VARIANTS.items():
             if name == "market":
@@ -53,12 +53,12 @@ def main():
             r = run(data, tp=CHOSEN, strategies=("trend",), entry=ep, costs=replace(Costs(), maker_fee=mk))
             w(row(name, f"{mk:.2%}", r))
     w("")
-    w(f"## 2. Stability at 0.40% maker: before vs after {SPLIT:%Y-%m-%d}\n")
+    w(f"## 2. Stability at 0.50% maker: before vs after {SPLIT:%Y-%m-%d}\n")
     w("| Entry | Period | Trades | Limit fill rate | Win % | Profit factor | Return | Max DD | Fees | Kill switch |\n"
       "|---|---|---|---|---|---|---|---|---|---|")
     for name, ep in VARIANTS.items():
         for p, s, e in [("early", None, SPLIT), ("late", SPLIT, None)]:
-            r = run(data, tp=CHOSEN, strategies=("trend",), entry=ep, costs=replace(Costs(), maker_fee=0.004),
+            r = run(data, tp=CHOSEN, strategies=("trend",), entry=ep, costs=replace(Costs(), maker_fee=0.005),
                     start=s, end=e)
             w(row(name, p, r))
     w("")
